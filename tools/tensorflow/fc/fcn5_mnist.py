@@ -22,6 +22,8 @@ tf.app.flags.DEFINE_boolean('use_fp16', False,
                             """Train the model using fp16.""")
 tf.app.flags.DEFINE_boolean('log_device_placement', False,
                             """Whether to log device placement.""")
+tf.app.flags.DEFINE_boolean('use_dataset', False,
+                            """Whether to use datasets vs. feed_dict.""")
 tf.app.flags.DEFINE_integer('num_gpus', 1, """How many GPUs to use.""")
 
 EPOCH_SIZE = 60000
@@ -57,7 +59,7 @@ def train(model='fcn5'):
     device_id = FLAGS.device_id
     device_str = ''
     # Try DataSets
-    try_datasets = False
+    try_datasets = FLAGS.use_dataset
     if int(device_id) >= 0:
         device_str = '/gpu:%d'%int(device_id)
     else:
@@ -65,8 +67,6 @@ def train(model='fcn5'):
         num_threads = os.getenv('OMP_NUM_THREADS', 1)
         config = tf.ConfigProto(allow_soft_placement=True, intra_op_parallelism_threads=int(num_threads))
     config = tf.ConfigProto(allow_soft_placement=True,intra_op_parallelism_threads=1,inter_op_parallelism_threads=0)
-    config.gpu_options.force_gpu_compatible = True
-    os.environ['TF_ENABLE_WINOGRAD_NONFUSED'] = '1'
     #config.graph_options.optimizer_options.global_jit_level = tf.OptimizerOptions.ON_1
     
     with tf.Graph().as_default(), tf.device(device_str), tf.Session(config=config) as sess:
@@ -87,7 +87,6 @@ def train(model='fcn5'):
                 dataset = dataset.batch(FLAGS.batch_size)
                 iterator = dataset.make_initializable_iterator()
 
-                #iterator = dataset.make_one_shot_iterator()
                 images,labels = iterator.get_next()
                 
 
