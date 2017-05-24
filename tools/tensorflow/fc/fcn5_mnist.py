@@ -81,12 +81,11 @@ def train(model='fcn5'):
                 d_features = mnist.train.images
                 d_labels = mnist.train.labels
                 # First 5,000 are labels
-                dataset = tf.contrib.data.Dataset.from_tensor_slices((d_features[5000:], d_labels[5000:]))
+                dataset = tf.contrib.data.Dataset.from_tensor_slices((d_features, d_labels))
+                dataset = dataset.shuffle(buffer_size=55000)
                 dataset = dataset.repeat()
-                dataset = dataset.shuffle(buffer_size=50000)
                 dataset = dataset.batch(FLAGS.batch_size)
                 iterator = dataset.make_initializable_iterator()
-
                 images,labels = iterator.get_next()
                 
 
