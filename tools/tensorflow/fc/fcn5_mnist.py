@@ -22,12 +22,14 @@ tf.app.flags.DEFINE_boolean('use_fp16', False,
                             """Train the model using fp16.""")
 tf.app.flags.DEFINE_boolean('log_device_placement', False,
                             """Whether to log device placement.""")
+# DataSets is included with TensorFlow 1.2 and is the easiest way to create input pipelines.
+# It is faster than feed_dict 1 GPU and is much faster at 2,4 and 8 GPUs.
 tf.app.flags.DEFINE_boolean('use_dataset', False,
                             """Whether to use datasets vs. feed_dict.""")
 tf.app.flags.DEFINE_integer('num_gpus', 1, """How many GPUs to use.""")
 
-EPOCH_SIZE = 60000
-TEST_SIZE = 10000
+EPOCH_SIZE = 55000
+TEST_SIZE = 5000
 
 
 def createFakeData(count, featureDim, labelDim):
@@ -67,6 +69,7 @@ def train(model='fcn5'):
         num_threads = os.getenv('OMP_NUM_THREADS', 1)
         config = tf.ConfigProto(allow_soft_placement=True, intra_op_parallelism_threads=int(num_threads))
     config = tf.ConfigProto(allow_soft_placement=True,intra_op_parallelism_threads=1,inter_op_parallelism_threads=0)
+    # Turns on XLA.  XLA is not included in the standard build.  For single GPU this shows ~5% improvement
     #config.graph_options.optimizer_options.global_jit_level = tf.OptimizerOptions.ON_1
     
     with tf.Graph().as_default(), tf.device(device_str), tf.Session(config=config) as sess:
@@ -80,11 +83,14 @@ def train(model='fcn5'):
             with tf.device('/CPU:0'):
                 d_features = mnist.train.images
                 d_labels = mnist.train.labels
-                # First 5,000 are labels
-                dataset = tf.contrib.data.Dataset.from_tensor_slices((d_features[5000:], d_labels[5000:]))
+                dataset = tf.contrib.data.Dataset.from_tensor_slices((d_features, d_labels))
                 dataset = dataset.repeat()
-                dataset = dataset.shuffle(buffer_size=50000)
+                dataset = dataset.shuffle(buffer_size=55000)
                 dataset = dataset.batch(FLAGS.batch_size)
+                # Trick to get datasets to buffer the next epoch.  This is needed because
+                # the data loading is occuring outside DataSets in python.  Normally preprocessing
+                # would occur in DataSets and this odd looking line is not needed.  
+                dataset = dataset.map(lambda x,y:(x,y),num_threads=1,output_buffer_size=1)
                 iterator = dataset.make_initializable_iterator()
 
                 images,labels = iterator.get_next()
@@ -120,7 +126,7 @@ def train(model='fcn5'):
             sess.run(iterator.initializer)
         #tf.train.start_queue_runners(sess=sess)
         batch_size_per_epoch = int((EPOCH_SIZE + FLAGS.batch_size - 1)/ FLAGS.batch_size)
-        iterations = FLAGS.epochs * batch_size_per_epoch 
+        iterations = FLAGS.epochs * batch_size_per_epoch
         average_batch_time = 0.0
         epochs_info = []
         average_loss = 0.0
@@ -134,9 +140,8 @@ def train(model='fcn5'):
                 _, loss_value = sess.run([optimizer, loss])
             else:
                 _, loss_value = sess.run([optimizer, loss], feed_dict={images:imgs,labels:labs})
-            average_loss += loss_value
-            #print ("HERE:{}".format(loss_value))
             duration = time.time() - start_time
+            average_loss += loss_value
             average_batch_time += float(duration)
             assert not np.isnan(loss_value), 'Model diverged with loss = NaN'
             if step % FLAGS.log_step == 0:
@@ -144,12 +149,12 @@ def train(model='fcn5'):
                 sec_per_batch = float(duration)
                 format_str = ('%s: step %d, loss = %.2f (%.1f examples/sec; %.3f sec/batch)')
                 print (format_str % (datetime.now(), step, loss_value, examples_per_sec, sec_per_batch))
-            #if step > 0 and step % (FLAGS.eval_step * batch_size_per_epoch) == 0:
-            #    average_loss /= FLAGS.eval_step * batch_size_per_epoch
-            #    accuracy_value = accuracy.eval(feed_dict={images: mnist.test.images, labels: mnist.test.labels})
-            #    print("test accuracy %g"%accuracy_value)
-            #    epochs_info.append('%d:%g:%s'%(step/(FLAGS.eval_step*batch_size_per_epoch), accuracy_value, average_loss)) 
-            #    average_loss = 0.0
+            if step > 0 and step % (FLAGS.eval_step * batch_size_per_epoch) == 0:
+                average_loss /= FLAGS.eval_step * batch_size_per_epoch
+                accuracy_value = accuracy.eval(feed_dict={images: mnist.test.images, labels: mnist.test.labels})
+                print("test accuracy %g"%accuracy_value)
+                epochs_info.append('%d:%g:%s'%(step/(FLAGS.eval_step*batch_size_per_epoch), accuracy_value, average_loss)) 
+                average_loss = 0.0
         average_batch_time /= iterations
         print 'average_batch_time: ', average_batch_time
         print ('epoch_info: %s' % ','.join(epochs_info))
