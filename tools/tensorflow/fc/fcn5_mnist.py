@@ -92,7 +92,6 @@ def train(model='fcn5'):
                 # would occur in DataSets and this odd looking line is not needed.  
                 dataset = dataset.map(lambda x,y:(x,y),num_threads=1,output_buffer_size=1)
                 iterator = dataset.make_initializable_iterator()
-
                 images,labels = iterator.get_next()
                 
 

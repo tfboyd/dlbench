@@ -100,13 +100,10 @@ def average_gradients(tower_grads):
 
 
 def train(model='fcn5'):
-    #if FLAGS.num_gpus < 2:
-    #    print("The number of GPU should be 2 or more, if you use one GPU, please use fcn5_mnist.py to train")
-    #    return
 
     config = tf.ConfigProto(allow_soft_placement=True,log_device_placement=FLAGS.log_device_placement)
 
-    with tf.Graph().as_default(), tf.device("/cpu:0"):
+    with tf.Graph().as_default(), tf.device("/" + FLAGS.local_ps_device):
         global_step = tf.get_variable('global_step', [], initializer=tf.constant_initializer(0), trainable=False)
 
         device_ids = FLAGS.device_ids
@@ -134,13 +131,11 @@ def train(model='fcn5'):
             with tf.device('/CPU:0'):
                 d_features = mnist.train.images
                 d_labels = mnist.train.labels
-                # First 5,000 are labels
-                dataset = tf.contrib.data.Dataset.from_tensor_slices((d_features[5000:], d_labels[5000:]))
+                dataset = tf.contrib.data.Dataset.from_tensor_slices((d_features, d_labels))
+                dataset = dataset.shuffle(buffer_size=55000)
                 dataset = dataset.repeat()
-                dataset = dataset.shuffle(buffer_size=50000)
                 dataset = dataset.batch(FLAGS.batch_size)
                 iterator = dataset.make_initializable_iterator()
-
                 images,labels = iterator.get_next()
 
         tower_grads = []
@@ -175,10 +170,8 @@ def train(model='fcn5'):
         sess = tf.Session(config=config)
         sess.run(init)
         if FLAGS.use_dataset:
-            #print('image cnt:{} label cnt:{}'.format(d_features.shape,d_labels.shape))
             sess.run(iterator.initializer)
-        #tf.train.start_queue_runners(sess=sess)
-
+            
         real_batch_size = FLAGS.batch_size * FLAGS.num_gpus
         num_batches_per_epoch = int((EPOCH_SIZE + real_batch_size - 1)/ real_batch_size)
         iterations = FLAGS.epochs * num_batches_per_epoch 
@@ -189,13 +182,12 @@ def train(model='fcn5'):
         average_loss = 0.0
         for step in range(iterations):
             start_time = time.time()
-            imgs, labs = get_real_batch_data(real_batch_size, 10)
             feed_dict = {}
             if not FLAGS.use_dataset:
+                imgs, labs = get_real_batch_data(real_batch_size, 10)
                 for i in range(FLAGS.num_gpus):
                     feed_dict[feed_vars[i][0]] = imgs[i*FLAGS.batch_size:(i+1)*FLAGS.batch_size]
                     feed_dict[feed_vars[i][1]] = labs[i*FLAGS.batch_size:(i+1)*FLAGS.batch_size] 
-           # _, loss_value = sess.run([train_op, total_loss], feed_dict=feed_dict)
             _, loss_value = sess.run([train_op, average_op], feed_dict=feed_dict)
             duration = time.time() - start_time
             average_batch_time += float(duration)
