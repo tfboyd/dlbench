@@ -138,7 +138,9 @@ def train(model='fcn5'):
                 # Trick to get datasets to buffer the next epoch.  This is needed because
                 # the data loading is occuring outside DataSets in python.  Normally preprocessing
                 # would occur in DataSets and this odd looking line is not needed.  
-                dataset = dataset.map(lambda x,y:(x,y),num_threads=1,output_buffer_size=1)
+                dataset = dataset.map(lambda x,y:(x,y),
+                    num_threads=FLAGS.num_gpus,
+                    output_buffer_size=FLAGS.num_gpus)
                 iterator = dataset.make_initializable_iterator()
                 images,labels = iterator.get_next()
 
