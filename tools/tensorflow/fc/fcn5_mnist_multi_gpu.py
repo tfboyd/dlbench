@@ -154,7 +154,7 @@ def train(model='fcn5'):
                         feature_dim = models.feature_dim
                         label_dim = models.label_dim
                         images = tf.placeholder(tf.float32, [None, feature_dim], name='images')
-                        labels = tf.placeholder(tf.float32, [None, label_dim], name='labels')
+                        labels = tf.placeholder(tf.int64, [None, label_dim], name='labels')
                         feed_vars.append((images, labels))
                     with tf.variable_scope(tf.get_variable_scope(), reuse=reuse_variables): 
                         logits = models.model_fcn5(images)

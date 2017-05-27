@@ -45,7 +45,7 @@ def model_fcn8(features):
 
 
 def loss(logits, labels):
-    labels = tf.cast(labels, tf.float32)
+    labels = tf.to_int64(labels)
     cross_entropy = tf.nn.softmax_cross_entropy_with_logits(logits=logits, labels=labels)
     loss = tf.reduce_mean(cross_entropy, name='cross_entropy_mean')
     return loss

@@ -97,7 +97,7 @@ def train(model='fcn5'):
                 
         else:
             images = tf.placeholder(tf.float32, [None, feature_dim], name="images_placeholder")
-            labels = tf.placeholder(tf.float32, [None, label_dim], name="labels_placeholder")
+            labels = tf.placeholder(tf.int64, [None, label_dim], name="labels_placeholder")
 
         logits = None
         loss = None
