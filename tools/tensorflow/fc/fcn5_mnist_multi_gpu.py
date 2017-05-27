@@ -1,4 +1,5 @@
 import os
+import operator
 import tensorflow as tf
 import models
 import time
@@ -27,9 +28,11 @@ tf.app.flags.DEFINE_boolean('use_fp16', False,
 tf.app.flags.DEFINE_boolean('log_device_placement', True,
                             """Whether to log device placement.""")
 tf.app.flags.DEFINE_integer('num_gpus', 2, """How many GPUs to use.""")
-tf.app.flags.DEFINE_string('local_ps_device', 'GPU:0', """Local parameter server GPU:0 if gpus are peered or CPU:0 otherwise try both.""")
+tf.app.flags.DEFINE_string('local_ps_device', 'GPU', """Local parameter server GPU if gpus are peered or CPU otherwise try both.""")
 tf.app.flags.DEFINE_boolean('use_dataset', False,
                             """Whether to use datasets vs. feed_dict.""")
+tf.app.flags.DEFINE_boolean('xla', False,
+                            """True to use XLA, which has to be compiled in.""")
 
 EPOCH_SIZE = 60000
 TEST_SIZE = 10000
@@ -73,37 +76,25 @@ def average_gradients(tower_grads):
        across all towers.
     """
     average_grads = []
-    for grad_and_vars in zip(*tower_grads):
-      # Note that each grad_and_vars looks like the following:
-      #   ((grad0_gpu0, var0_gpu0), ... , (grad0_gpuN, var0_gpuN))
-      grads = []
-      for g, _ in grad_and_vars:
-        # Add 0 dimension to the gradients to represent the tower.
-        expanded_g = tf.expand_dims(g, 0)
-
-        # Append on a 'tower' dimension which we will average over below.
-        grads.append(expanded_g)
-
-      # Average over the 'tower' dimension.
-      grad = tf.concat(axis=0, values=grads)
-      grad = tf.reduce_mean(grad, 0)
-
-      # Keep in mind that the Variables are redundant because they are shared
-      # across towers. So .. we will just return the first tower's pointer to
-      # the Variable.
-      v = grad_and_vars[0][1]
-      grad_and_var = (grad, v)
-      average_grads.append(grad_and_var)
+    for single_grads in zip(*tower_grads):
+        grads = [g for g, _ in single_grads]
+        grad = tf.add_n(grads)
+        grad = tf.multiply(grad, 1.0/len(grads))
+        v = single_grads[0][1]
+        grad_and_var = (grad, v)
+        average_grads.append(grad_and_var)
     return average_grads
-
-
 
 
 def train(model='fcn5'):
 
     config = tf.ConfigProto(allow_soft_placement=True,log_device_placement=FLAGS.log_device_placement)
 
-    with tf.Graph().as_default(), tf.device("/" + FLAGS.local_ps_device):
+    if FLAGS.xla:
+        # Turns on XLA.  XLA is not included in the standard build.  For single GPU this shows ~5% improvement
+        config.graph_options.optimizer_options.global_jit_level = tf.OptimizerOptions.ON_1
+
+    with tf.Graph().as_default(), tf.device("/" + FLAGS.local_ps_device + ":0"):
         global_step = tf.get_variable('global_step', [], initializer=tf.constant_initializer(0), trainable=False)
 
         device_ids = FLAGS.device_ids
@@ -116,13 +107,22 @@ def train(model='fcn5'):
         #optimizer = tf.train.GradientDescentOptimizer(lr)
         optimizer = tf.train.MomentumOptimizer(lr, 0.9)
 
-        def assign_to_device(device, ps_device="/" + FLAGS.local_ps_device):
+        def assign_to_device(device, ps_device=FLAGS.local_ps_device):
+            worker_device = device
+            ps_sizes = [0]
+            if FLAGS.local_ps_device.lower == 'gpu':
+                ps_sizes = [0] * FLAGS.num_gpus
             def _assign(op):
-                node_def = op if isinstance(op, tf.NodeDef) else op.node_def
-                if node_def.op == "Variable":
-                    return ps_device
-                else:
-                    return device
+                if op.device:
+                  return op.device
+                if op.type not in ['Variable', 'VariableV2']:
+                  return worker_device
+                device_index, _ = min(enumerate(
+                    ps_sizes), key=operator.itemgetter(1))
+                device_name = '/' + FLAGS.local_ps_device +':' + str(device_index)
+                var_size = op.outputs[0].get_shape().num_elements()
+                ps_sizes[device_index] += var_size
+                return device_name
             return _assign
 
         images = None
@@ -132,9 +132,13 @@ def train(model='fcn5'):
                 d_features = mnist.train.images
                 d_labels = mnist.train.labels
                 dataset = tf.contrib.data.Dataset.from_tensor_slices((d_features, d_labels))
-                dataset = dataset.shuffle(buffer_size=55000)
+                dataset = dataset.shuffle(buffer_size=60000)
                 dataset = dataset.repeat()
                 dataset = dataset.batch(FLAGS.batch_size)
+                # Trick to get datasets to buffer the next epoch.  This is needed because
+                # the data loading is occuring outside DataSets in python.  Normally preprocessing
+                # would occur in DataSets and this odd looking line is not needed.  
+                dataset = dataset.map(lambda x,y:(x,y),num_threads=1,output_buffer_size=1)
                 iterator = dataset.make_initializable_iterator()
                 images,labels = iterator.get_next()
 
@@ -142,6 +146,7 @@ def train(model='fcn5'):
         feed_vars = []
         average_loss_tensor = []
         reuse_variables = False
+        accuracy = None
         for i in xrange(FLAGS.num_gpus):
             with tf.device(assign_to_device('/gpu:%s'%device_ids[i])):
                 with tf.name_scope('%s_%s' % ('TOWER', device_ids[i])) as scope:
@@ -153,6 +158,10 @@ def train(model='fcn5'):
                         feed_vars.append((images, labels))
                     with tf.variable_scope(tf.get_variable_scope(), reuse=reuse_variables): 
                         logits = models.model_fcn5(images)
+                    if i == 0:
+                        # Prediction only on GPU:0
+                        predictionCorrectness = tf.equal(tf.argmax(logits, 1), tf.argmax(labels, 1))
+                        accuracy = tf.reduce_mean(tf.cast(predictionCorrectness, "float"))
                     loss = models.loss(logits, labels)
                     reuse_variables = True
                     average_loss_tensor.append(loss)
@@ -206,6 +215,8 @@ def train(model='fcn5'):
                 print ('epoch: %d, loss: %.2f' % (step/(FLAGS.eval_step*num_batches_per_epoch), average_loss))
                 epochs_info.append('%d:-:%s'%(step/(FLAGS.eval_step*num_batches_per_epoch), average_loss)) 
                 average_loss = 0.0
+                accuracy_value = accuracy.eval(session=sess, feed_dict={images: mnist.test.images, labels: mnist.test.labels})
+                print("test accuracy %g"%accuracy_value)
 
         checkpoint_path = os.path.join(FLAGS.train_dir, 'model.ckpt')
         saver.save(sess, checkpoint_path, global_step=step)
@@ -216,6 +227,8 @@ def train(model='fcn5'):
 
 
 def main(argv=None):
+    os.environ['TF_SYNC_ON_FINISH'] = '0'
+    os.environ['TF_ENABLE_WINOGRAD_NONFUSED'] = '1'
     train(model='fcn5')
 
 
