@@ -215,7 +215,10 @@ def train(model='fcn5'):
                 print ('epoch: %d, loss: %.2f' % (step/(FLAGS.eval_step*num_batches_per_epoch), average_loss))
                 epochs_info.append('%d:-:%s'%(step/(FLAGS.eval_step*num_batches_per_epoch), average_loss)) 
                 average_loss = 0.0
-                accuracy_value = accuracy.eval(session=sess, feed_dict={images: mnist.test.images, labels: mnist.test.labels})
+                feed_dict = {}
+                feed_dict[feed_vars[0][0]] = mnist.test.images
+                feed_dict[feed_vars[0][1]] = mnist.test.labels
+                accuracy_value = accuracy.eval(session=sess, feed_dict=feed_dict)
                 print("test accuracy %g"%accuracy_value)
 
         checkpoint_path = os.path.join(FLAGS.train_dir, 'model.ckpt')
