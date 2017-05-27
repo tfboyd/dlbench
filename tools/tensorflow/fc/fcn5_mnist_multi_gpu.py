@@ -172,7 +172,7 @@ def train(model='fcn5'):
         apply_gradient_op = optimizer.apply_gradients(grads, global_step=global_step)
 
         train_op = apply_gradient_op
-        average_op = tf.reduce_mean(average_loss_tensor, 0)
+        average_op = tf.reduce_mean(average_loss_tensor)
         saver = tf.train.Saver(tf.global_variables())
 
         init = tf.global_variables_initializer()
