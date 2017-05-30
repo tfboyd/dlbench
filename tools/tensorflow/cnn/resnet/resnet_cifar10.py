@@ -35,31 +35,36 @@ tf.app.flags.DEFINE_boolean('use_fp16', False,
                             """Train the model using fp16.""")
 tf.app.flags.DEFINE_boolean('log_device_placement', False,
                             """Whether to log device placement.""")
+tf.app.flags.DEFINE_boolean('use_dataset', False, """True to use datasets""")
 
 EPOCH_SIZE = 50000
 TEST_SIZE = 10000
-
-def get_device_str(device_id):
-    global device_str
-    if int(device_id) >= 0:
-        device_str = '/gpu:%d'%int(device_id)
-    else:
-        device_str = '/cpu:0'
-    return device_str
 
 
 def train():
   global parameters
   config = tf.ConfigProto(allow_soft_placement=True, log_device_placement=FLAGS.log_device_placement)
-  device_str = get_device_str(FLAGS.device_id)
-  if device_str.find('cpu') >= 0: # cpu version
+  device_id = FLAGS.device_id
+  if int(device_id) >= 0:
+      device_str = '/gpu:%d'%int(device_id)
+      config.allow_soft_placement = True
+      config.intra_op_parallelism_threads = 1
+      config.inter_op_parallelism_threads = 0
+  else:
+      device_str = '/cpu:0'
       num_threads = os.getenv('OMP_NUM_THREADS', 1)
       config = tf.ConfigProto(allow_soft_placement=True, intra_op_parallelism_threads=int(num_threads))
   with tf.Graph().as_default(), tf.device(device_str), tf.Session(config=config) as sess:
+      initalizer = None
+      images = None
+      labels = None
       with tf.device('/cpu:0'):
-        images, labels = cifar10_input.inputs(False, FLAGS.data_dir, FLAGS.batch_size)
-      print('Images: ', images)
-
+        if FLAGS.use_dataset:
+          iterator, initalizer =  cifar10_input.dataSet(FLAGS.data_dir, FLAGS.batch_size)
+          images, labels = iterator.get_next()
+        else:
+          images, labels = cifar10_input.inputs(False, FLAGS.data_dir, FLAGS.batch_size)
+        labels = tf.contrib.layers.one_hot_encoding(labels, 10)
       #logits = inference(images, is_training=True, num_blocks=9)
       logits = inference_small(images, is_training=True, num_blocks=9)
       # Add a simple objective so we can calculate the backward pass.
@@ -77,8 +82,13 @@ def train():
       init = tf.global_variables_initializer()
       # Start running operations on the Graph.
       sess.run(init)
-      coord = tf.train.Coordinator()
-      threads = tf.train.start_queue_runners(sess=sess, coord=coord)
+      coord = None
+      threads = None
+      if FLAGS.use_dataset:
+        sess.run(initalizer)
+      else:
+        coord = tf.train.Coordinator()
+        threads = tf.train.start_queue_runners(sess=sess, coord=coord)
 
       real_batch_size = FLAGS.batch_size 
       num_batches_per_epoch = int((EPOCH_SIZE + real_batch_size - 1)/ real_batch_size)
@@ -107,8 +117,9 @@ def train():
               checkpoint_path = os.path.join(FLAGS.train_dir, 'model.ckpt')
               saver.save(sess, checkpoint_path, global_step=step)
 
-      coord.request_stop()
-      coord.join(threads)
+      if not FLAGS.use_dataset:
+        coord.request_stop()
+        coord.join(threads)
       average_batch_time /= iterations
       print 'average_batch_time: ', average_batch_time
       print ('epoch_info: %s'% ','.join(epochs_info))
@@ -116,6 +127,7 @@ def train():
 
 def main(_):
     os.environ['TF_ENABLE_WINOGRAD_NONFUSED'] = '1'
+    os.environ['TF_SYNC_ON_FINISH'] = '0'
     train()
 
 
