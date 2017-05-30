@@ -195,8 +195,8 @@ def bn(x, c):
 def fc(x, c):
     num_units_in = x.get_shape()[1]
     num_units_out = c['fc_units_out']
-    #weights_initializer = tf.truncated_normal_initializer(stddev=FC_WEIGHT_STDDEV)
-    weights_initializer =tf.contrib.layers.xavier_initializer(uniform=True) 
+    weights_initializer = tf.truncated_normal_initializer(stddev=FC_WEIGHT_STDDEV)
+    #weights_initializer =tf.contrib.layers.xavier_initializer(uniform=True) 
 
     weights = _get_variable('weights',
                             shape=[num_units_in, num_units_out],
