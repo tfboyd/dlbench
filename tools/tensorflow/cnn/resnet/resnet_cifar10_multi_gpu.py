@@ -33,6 +33,7 @@ tf.app.flags.DEFINE_integer('num_gpus', 2, """How many GPUs to use.""")
 # on the P100 via the DGX-1 CPU is the better choice.  
 tf.app.flags.DEFINE_string('local_ps_device', 'CPU', """Local parameter server GPU if gpus are peered or CPU otherwise try both.""")
 tf.app.flags.DEFINE_boolean('use_dataset', False, """True to use datasets""")
+tf.app.flags.DEFINE_string('data_format', 'NCHW', """NCHW for GPU and NHWC for CPU.""")
 
 EPOCH_SIZE = 50000
 TEST_SIZE = 10000
@@ -105,7 +106,10 @@ def train():
         initalizer = None
         if FLAGS.use_dataset:
             with tf.device('/CPU:0'):
-                iterator, initalizer =  cifar10_input.dataSet(FLAGS.data_dir, FLAGS.batch_size)
+                iterator, initalizer =  cifar10_input.dataSet(FLAGS.data_dir,
+                                                              FLAGS.batch_size,
+                                                              device='gpu',
+                                                              data_format=FLAGS.data_format)
                 images, labels = iterator.get_next()
 
         tower_grads = []
@@ -118,9 +122,9 @@ def train():
                 with tf.name_scope('%s_%s' % ('TOWER', device_ids[i])) as n_scope:
                     with tf.device('/cpu:0'):
                         if not FLAGS.use_dataset:
-                            images, labels = cifar10_input.inputs(False, FLAGS.data_dir, FLAGS.batch_size)
+                            images, labels = cifar10_input.inputs(False, FLAGS.data_dir, FLAGS.batch_size, data_format=FLAGS.data_format)
                     with tf.variable_scope(tf.get_variable_scope(), reuse=reuse_variables):
-                        logits = inference_small(images, is_training=True, num_blocks=9)
+                        logits = inference_small(images, is_training=True, num_blocks=9, data_format=FLAGS.data_format)
                     hot_labels = tf.contrib.layers.one_hot_encoding(labels, 10)
                     tower_loss = loss(logits, hot_labels)
                     losses.append(tower_loss)

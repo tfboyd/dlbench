@@ -65,7 +65,9 @@ def train():
       labels = None
       with tf.device('/cpu:0'):
         if FLAGS.use_dataset:
-          iterator, initalizer =  cifar10_input.dataSet(FLAGS.data_dir, FLAGS.batch_size, data_format=data_format)
+          iterator, initalizer =  cifar10_input.dataSet(FLAGS.data_dir, FLAGS.batch_size,
+                                                        data_format=data_format,
+                                                        device=device_str)
           images, labels = iterator.get_next()
         else:
           images, labels = cifar10_input.inputs(False, FLAGS.data_dir, FLAGS.batch_size, data_format=data_format)

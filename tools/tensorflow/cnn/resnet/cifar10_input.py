@@ -253,7 +253,7 @@ def distorted_inputs(data_dir, batch_size):
 #  return image, label
 
 
-def dataSet(data_dir, batch_size, data_format='NCHW'):
+def dataSet(data_dir, batch_size, data_format='NCHW', device='gpu'):
   data = Cifar10Data(data_dir=data_dir)
   images, labels = data.read_data_files()
   images = tf.cast(images, tf.float32)
@@ -265,7 +265,7 @@ def dataSet(data_dir, batch_size, data_format='NCHW'):
   
   dataset = tf.contrib.data.Dataset.from_tensor_slices((images, labels))
   # Indicates CPU is being used and less threads are needed
-  if FLAGS.device_id < 0:
+  if 'cpu' in device.lower():
     dataset = dataset.map(lambda x,y:(x,y),num_threads=1,output_buffer_size=batch_size)
   else:
     dataset = dataset.map(lambda x,y:(x,y),num_threads=8,output_buffer_size=batch_size)
