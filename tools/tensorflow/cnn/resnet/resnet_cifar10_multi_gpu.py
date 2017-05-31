@@ -66,6 +66,9 @@ def average_gradients(tower_grads):
 def train():
     global parameters
     config = tf.ConfigProto(allow_soft_placement=True, log_device_placement=FLAGS.log_device_placement)
+    config.allow_soft_placement = True
+    config.intra_op_parallelism_threads = 1
+    config.inter_op_parallelism_threads = 0
 
     with tf.Graph().as_default(), tf.device("/" + FLAGS.local_ps_device):
         global_step = tf.get_variable('global_step', [], initializer=tf.constant_initializer(0), trainable=False)
@@ -116,8 +119,6 @@ def train():
         reuse_variables = None
         losses = []
         for i in six.moves.range(FLAGS.num_gpus):
-            print('what is i: ', i)
-
             with tf.device(assign_to_device('/gpu:%s'%device_ids[i])):
                 with tf.name_scope('%s_%s' % ('TOWER', device_ids[i])) as n_scope:
                     with tf.device('/cpu:0'):
