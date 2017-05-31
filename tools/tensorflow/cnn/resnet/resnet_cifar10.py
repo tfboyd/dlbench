@@ -36,6 +36,7 @@ tf.app.flags.DEFINE_boolean('use_fp16', False,
 tf.app.flags.DEFINE_boolean('log_device_placement', False,
                             """Whether to log device placement.""")
 tf.app.flags.DEFINE_boolean('use_dataset', False, """True to use datasets""")
+tf.app.flags.DEFINE_string('data_format', 'NCHW', """NCHW for GPU and NHWC for CPU.""")
 
 EPOCH_SIZE = 50000
 TEST_SIZE = 10000
@@ -43,6 +44,7 @@ TEST_SIZE = 10000
 
 def train():
   global parameters
+  data_format = FLAGS.data_format
   config = tf.ConfigProto(allow_soft_placement=True, log_device_placement=FLAGS.log_device_placement)
   device_id = FLAGS.device_id
   if int(device_id) >= 0:
@@ -54,19 +56,21 @@ def train():
       device_str = '/cpu:0'
       num_threads = os.getenv('OMP_NUM_THREADS', 1)
       config = tf.ConfigProto(allow_soft_placement=True, intra_op_parallelism_threads=int(num_threads))
+      # Default format for CPU.  When using MKL NCHW might be better but that has not been proven.
+      data_format = 'NHWC'
+  print('Using data format:{}'.format(data_format))
   with tf.Graph().as_default(), tf.device(device_str), tf.Session(config=config) as sess:
       initalizer = None
       images = None
       labels = None
       with tf.device('/cpu:0'):
         if FLAGS.use_dataset:
-          iterator, initalizer =  cifar10_input.dataSet(FLAGS.data_dir, FLAGS.batch_size)
+          iterator, initalizer =  cifar10_input.dataSet(FLAGS.data_dir, FLAGS.batch_size, data_format=data_format)
           images, labels = iterator.get_next()
         else:
-          images, labels = cifar10_input.inputs(False, FLAGS.data_dir, FLAGS.batch_size)
+          images, labels = cifar10_input.inputs(False, FLAGS.data_dir, FLAGS.batch_size, data_format=data_format)
         labels = tf.contrib.layers.one_hot_encoding(labels, 10)
-      #logits = inference(images, is_training=True, num_blocks=9)
-      logits = inference_small(images, is_training=True, num_blocks=9)
+      logits = inference_small(images, is_training=True, num_blocks=9, data_format=data_format)
       # Add a simple objective so we can calculate the backward pass.
       loss_value = loss(logits, labels)
       # Compute the gradient with respect to all the parameters.

@@ -37,6 +37,8 @@ NUM_CLASSES = 10
 NUM_EXAMPLES_PER_EPOCH_FOR_TRAIN = 50000
 NUM_EXAMPLES_PER_EPOCH_FOR_EVAL = 10000
 
+FLAGS = tf.app.flags.FLAGS
+
 class Dataset(object):
   """Abstract class for cnn benchmarks dataset."""
 
@@ -83,7 +85,7 @@ class Cifar10Data(Dataset):
     return all_images, all_labels
 
 
-def read_cifar10(filename_queue):
+def read_cifar10(filename_queue, data_format):
   """Reads and parses examples from CIFAR10 data files.
 
   Recommendation: if you want N-way read parallelism, call this function
@@ -139,8 +141,10 @@ def read_cifar10(filename_queue):
                            [result.depth, result.height, result.width])
   # Convert from [depth, height, width] to [height, width, depth].
   # Using CHW (NCHW) as the default so no need to transpose
-  # result.uint8image = tf.transpose(depth_major, [1, 2, 0])
-  result.uint8image = depth_major
+  if data_format == 'NHWC':
+    result.uint8image = tf.transpose(depth_major, [1, 2, 0])
+  else:
+    result.uint8image = depth_major
   return result
 
 
@@ -249,29 +253,37 @@ def distorted_inputs(data_dir, batch_size):
 #  return image, label
 
 
-def dataSet(data_dir, batch_size):
+def dataSet(data_dir, batch_size, data_format='NCHW'):
   data = Cifar10Data(data_dir=data_dir)
   images, labels = data.read_data_files()
   images = tf.cast(images, tf.float32)
   labels = tf.cast(labels, tf.int32)
-  # Images do not need cropped the are all 32x32 they just need
-  # resized
-  images = tf.reshape(images,[50000,3,32,32])
+  # Reshape the images to break into channels and height and withh
+  images = tf.reshape(images,[50000, 3, 32, 32])
+  if data_format == 'NHWC':
+    images = tf.transpose(images, [0, 2, 3, 1])
   
   dataset = tf.contrib.data.Dataset.from_tensor_slices((images, labels))
-  dataset = dataset.map(lambda x,y:(x,y),num_threads=8,output_buffer_size=batch_size)
+  # Indicates CPU is being used and less threads are needed
+  if FLAGS.device_id < 0:
+    dataset = dataset.map(lambda x,y:(x,y),num_threads=1,output_buffer_size=batch_size)
+  else:
+    dataset = dataset.map(lambda x,y:(x,y),num_threads=8,output_buffer_size=batch_size)
   dataset = dataset.repeat()
   dataset = dataset.shuffle(buffer_size=50000)
   dataset = dataset.batch(batch_size)
   
   # Needed to let rest of the graph know the shape of the data
+  images_shape = [batch_size, 3, 32, 32]
+  if data_format == 'NHWC':
+    images_shape = [batch_size, 32, 32, 3]
   iterator = tf.contrib.data.Iterator.from_structure((tf.float32,tf.int32),
-                                                      ([batch_size,3,32,32],[batch_size,]))
+                                                     (images_shape, [batch_size,]))
   initializer = iterator.make_initializer(dataset)
   return iterator,initializer
 
 
-def inputs(eval_data, data_dir, batch_size):
+def inputs(eval_data, data_dir, batch_size, data_format='NCHW'):
   """Construct input for CIFAR evaluation using the Reader ops.
 
   Args:
@@ -301,7 +313,7 @@ def inputs(eval_data, data_dir, batch_size):
   filename_queue = tf.train.string_input_producer(filenames)
 
   # Read examples from files in the filename queue.
-  read_input = read_cifar10(filename_queue)
+  read_input = read_cifar10(filename_queue, data_format=data_format)
   reshaped_image = tf.cast(read_input.uint8image, tf.float32)
 
   height = IMAGE_SIZE
