@@ -25,10 +25,7 @@ tf.app.flags.DEFINE_integer('epochs', 40, """Max epochs for training.""")
 tf.app.flags.DEFINE_integer('log_step', 100, """Log step""")
 tf.app.flags.DEFINE_integer('eval_step', 1, """Evaluate step of epoch""")
 tf.app.flags.DEFINE_integer('device_id', 0, """Device id.""")
-#tf.app.flags.DEFINE_string('data_dir', '/home/comp/csshshi/data/tensorflow/cifar10/cifar-10-batches-bin',"""Data directory""")
 tf.app.flags.DEFINE_string('data_dir', os.environ['HOME']+'/data/tensorflow/cifar10/cifar-10-batches-bin', """Data directory""")
-#tf.app.flags.DEFINE_string('data_dir', '/home/comp/csshshi/data/tensorflow/cifar10/cifar-10-batches-bin',"""Data directory""")
-#tf.app.flags.DEFINE_string('data_dir', '/home/ipdps/Data/tensorflow/cifar10/cifar-10-batches-bin', """Data directory""")
 tf.app.flags.DEFINE_string('train_dir', './trained_models/',
                            """Path to the data directory.""")
 tf.app.flags.DEFINE_boolean('use_fp16', False,
@@ -46,7 +43,6 @@ def train():
   global parameters
   data_format = FLAGS.data_format
   config = tf.ConfigProto(allow_soft_placement=True, log_device_placement=FLAGS.log_device_placement)
-  #config.gpu_options.force_gpu_compatible = 1
   device_id = FLAGS.device_id
   if int(device_id) >= 0:
       device_str = '/gpu:%d'%int(device_id)
@@ -72,7 +68,6 @@ def train():
           images, labels = iterator.get_next()
         else:
           images, labels = cifar10_input.inputs(False, FLAGS.data_dir, FLAGS.batch_size, data_format=data_format)
-        #labels = tf.contrib.layers.one_hot_encoding(labels, 10)
       logits = inference_small(images, is_training=True, num_blocks=9, data_format=data_format)
       # Add a simple objective so we can calculate the backward pass.
       loss_value = loss(logits, labels)
@@ -104,11 +99,9 @@ def train():
 
       epochs_info = []
       average_loss = 0.0
-      session_call = sess.make_callable([grad, loss_value])
       for step in xrange(iterations):
           start_time = time.time()
-          #_, loss_v = sess.run([grad, loss_value])
-          _, loss_v = session_call()
+          _, loss_v = sess.run([grad, loss_value])
           duration = time.time() - start_time
           average_batch_time += float(duration)
           average_loss += loss_v

@@ -9,17 +9,8 @@ import numpy as np
 import os
 import time
 
-#MOVING_AVERAGE_DECAY = 0.9999
-#MOVING_AVERAGE_DECAY = 0.0001
-#BN_DECAY = MOVING_AVERAGE_DECAY
-#BN_EPSILON = 2e-5 #0.001
-#BN_EPSILON = 0.001
-#CONV_WEIGHT_DECAY = 0.00004
-#CONV_WEIGHT_DECAY = 0.0001
 FC_WEIGHT_DECAY = 0.00004
 CONV_WEIGHT_STDDEV = 0
-#FC_WEIGHT_DECAY = 0.0001
-#FC_WEIGHT_DECAY = 0
 FC_WEIGHT_STDDEV = 0.125
 RESNET_VARIABLES = 'resnet_variables'
 UPDATE_OPS_COLLECTION = 'resnet_update_ops'  # must be grouped with training op
@@ -47,6 +38,7 @@ def inference_small(x,
     c['num_blocks'] = num_blocks
     c['num_classes'] = num_classes
     return inference_small_config(x, c)
+
 
 def inference_small_config(x, c):
     c['bottleneck'] = False
@@ -92,10 +84,7 @@ def loss(logits, labels):
     loss = tf.reduce_mean(cross_entropy, name='xentropy_mean')
  
     regularization_losses = tf.get_collection(RESNET_VARIABLES)
-    #total_loss = tf.add_n([loss] + regularization_losses,
-    #                      name='total_loss')
     l2_loss = tf.add_n([tf.nn.l2_loss(v) for v in regularization_losses])
-    #l2_loss = tf.add_n(regularization_losses)
     loss += FC_WEIGHT_DECAY * l2_loss
     
     return loss
@@ -237,14 +226,12 @@ def conv(x, c):
     stride = c['stride']
     filters_out = c['conv_filters_out']
 
-    kernel_initializer = tf.truncated_normal_initializer(stddev=CONV_WEIGHT_STDDEV)
     c = tf.layers.conv2d(x,
                          filters_out,
                          [ksize,ksize],
                          strides=[stride, stride],
                          padding='VALID',
                          data_format=DATA_FORMAT_C,
-                         #kernel_initializer=kernel_initializer,
                          use_bias=False)
     return c
 
