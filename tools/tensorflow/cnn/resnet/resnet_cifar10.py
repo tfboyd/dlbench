@@ -72,7 +72,7 @@ def train():
           images, labels = iterator.get_next()
         else:
           images, labels = cifar10_input.inputs(False, FLAGS.data_dir, FLAGS.batch_size, data_format=data_format)
-        labels = tf.contrib.layers.one_hot_encoding(labels, 10)
+        #labels = tf.contrib.layers.one_hot_encoding(labels, 10)
       logits = inference_small(images, is_training=True, num_blocks=9, data_format=data_format)
       # Add a simple objective so we can calculate the backward pass.
       loss_value = loss(logits, labels)
@@ -104,9 +104,11 @@ def train():
 
       epochs_info = []
       average_loss = 0.0
+      session_call = sess.make_callable([grad, loss_value])
       for step in xrange(iterations):
           start_time = time.time()
-          _, loss_v = sess.run([grad, loss_value])
+          #_, loss_v = sess.run([grad, loss_value])
+          _, loss_v = session_call()
           duration = time.time() - start_time
           average_batch_time += float(duration)
           average_loss += loss_v

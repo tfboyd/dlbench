@@ -10,23 +10,20 @@ import os
 import time
 
 #MOVING_AVERAGE_DECAY = 0.9999
-MOVING_AVERAGE_DECAY = 0.0001
-BN_DECAY = MOVING_AVERAGE_DECAY
-BN_EPSILON = 2e-5 #0.001
+#MOVING_AVERAGE_DECAY = 0.0001
+#BN_DECAY = MOVING_AVERAGE_DECAY
+#BN_EPSILON = 2e-5 #0.001
 #BN_EPSILON = 0.001
 #CONV_WEIGHT_DECAY = 0.00004
-CONV_WEIGHT_DECAY = 0.0001
-CONV_WEIGHT_STDDEV = 0.1
-#FC_WEIGHT_DECAY = 0.00004
-FC_WEIGHT_DECAY = 0.0001
+#CONV_WEIGHT_DECAY = 0.0001
+FC_WEIGHT_DECAY = 0.00004
+CONV_WEIGHT_STDDEV = 0
+#FC_WEIGHT_DECAY = 0.0001
 #FC_WEIGHT_DECAY = 0
-FC_WEIGHT_STDDEV = 0.01
+FC_WEIGHT_STDDEV = 0.125
 RESNET_VARIABLES = 'resnet_variables'
 UPDATE_OPS_COLLECTION = 'resnet_update_ops'  # must be grouped with training op
-
-
 activation = tf.nn.relu
-
 DATA_FORMAT = 'NCHW'
 DATA_FORMAT_C = 'channels_first'
 
@@ -89,16 +86,19 @@ def inference_small_config(x, c):
 
 def loss(logits, labels):
     
-    cross_entropy = tf.nn.softmax_cross_entropy_with_logits(logits=logits,
+    cross_entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logits,
                                                             labels=labels,
                                                             name='xentropy')
-    cross_entropy_mean = tf.reduce_mean(cross_entropy, name='xentropy_mean')
+    loss = tf.reduce_mean(cross_entropy, name='xentropy_mean')
  
-    regularization_losses = tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)
-    total_loss = tf.add_n([cross_entropy_mean] + regularization_losses,
-                          name='total_loss')
+    regularization_losses = tf.get_collection(RESNET_VARIABLES)
+    #total_loss = tf.add_n([loss] + regularization_losses,
+    #                      name='total_loss')
+    l2_loss = tf.add_n([tf.nn.l2_loss(v) for v in regularization_losses])
+    #l2_loss = tf.add_n(regularization_losses)
+    loss += FC_WEIGHT_DECAY * l2_loss
     
-    return total_loss
+    return loss
 
 
 def stack(x, c):
@@ -183,8 +183,7 @@ def bn(x, c):
                              initializer=tf.zeros_initializer())
         return x + bias
 
-    batch_norm_config = {'decay': 0.9, 'epsilon': 1e-5, 'scale': True,
-                         'center': True}
+    batch_norm_config = {'decay': 0.9, 'epsilon': 1e-5, 'scale': True}
                          
     x = tf.contrib.layers.batch_norm(x, 
                                      is_training=c['is_training'],
@@ -245,7 +244,7 @@ def conv(x, c):
                          strides=[stride, stride],
                          padding='VALID',
                          data_format=DATA_FORMAT_C,
-                         kernel_initializer=kernel_initializer,
+                         #kernel_initializer=kernel_initializer,
                          use_bias=False)
     return c
 
