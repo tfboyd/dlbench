@@ -24,9 +24,7 @@ tf.app.flags.DEFINE_integer('epochs', 40, """Max epochs for training.""")
 tf.app.flags.DEFINE_integer('log_step', 50, """Log step""")
 tf.app.flags.DEFINE_integer('eval_step', 1, """Evaluate step of epoch""")
 tf.app.flags.DEFINE_integer('device_id', 0, """Device id.""")
-#tf.app.flags.DEFINE_string('data_dir', '/home/comp/csshshi/data/tensorflow/cifar10/cifar-10-batches-bin', """Data directory""")
 tf.app.flags.DEFINE_string('data_dir', os.environ['HOME']+'/data/tensorflow/cifar10/cifar-10-batches-bin', """Data directory""")
-#tf.app.flags.DEFINE_string('data_dir', '/home/comp/pengfeixu/Data/tensorflow/cifar10/cifar-10-batches-bin', """Data directory""")
 tf.app.flags.DEFINE_string('train_dir', './trained_models/',
                            """Path to the data directory.""")
 tf.app.flags.DEFINE_boolean('use_fp16', False,
@@ -69,7 +67,7 @@ def _conv(inpOp, nIn, nOut, kH, kW, dH, dW, padType):
                         'biases', [nOut], tf.float32,
                         tf.constant_initializer(0.0))
 
-        bias = tf.reshape(tf.nn.bias_add(conv, biases, data_format=data_format),
+        conv = tf.reshape(tf.nn.bias_add(conv, biases, data_format=data_format),
                           conv.get_shape())
         return conv
 
@@ -144,20 +142,20 @@ def inference(images):
     #if data_format == 'NHWC':
     #  images = tf.transpose(images,[0,2,3,1])
 
-    pad1 = _padding(images, 2) 
-    conv1 = _conv (pad1, 3, 32, 5, 5, 1, 1, 'VALID')
+    #pad1 = _padding(images, 2) 
+    conv1 = _conv (images, 3, 32, 5, 5, 1, 1, 'SAME')
     pool1 = _mpool(conv1,  3, 3, 2, 2)
     relu1 = _relu(pool1)
     #norm1 = _norm(relu1, 3, 5e-05, 0.75)
 
-    pad2 = _padding(relu1, 2)
-    conv2 = _conv (pad2, 32, 32, 5, 5, 1, 1, 'VALID')
+    #pad2 = _padding(relu1, 2)
+    conv2 = _conv (relu1, 32, 32, 5, 5, 1, 1, 'SAME')
     pool2 = _mpool(conv2, 3, 3, 2, 2)
     relu2 = _relu(pool2)
     #norm2 = _norm(relu2, 3, 5e-05, 0.75)
 
-    pad3 = _padding(relu2, 2)
-    conv3 = _conv (pad3,  32, 64, 5, 5, 1, 1, 'VALID')
+    #pad3 = _padding(relu2, 2)
+    conv3 = _conv (relu2,  32, 64, 5, 5, 1, 1, 'SAME')
     relu3 = _relu(conv3)
     pool3 = _avgpool(relu3, 3, 3, 2, 2) 
 
