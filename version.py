@@ -25,7 +25,7 @@ _PATCH_VERSION = '1'
 # stable release (indicated by `_REL_SUFFIX = ''`). Outside the context of a
 # release branch, the current version is by default assumed to be a
 # 'development' version, labeled 'dev'.
-_DEV_SUFFIX = 'dev'
+_DEV_SUFFIX = 'dev2'
 _REL_SUFFIX = ''
 
 # Example, '0.4.0rc0'
